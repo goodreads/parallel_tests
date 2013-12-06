@@ -13,7 +13,15 @@ module ParallelTests
         end
 
         def runtime_log
-          'tmp/parallel_runtime_test.log'
+          runtime_log_name(ENV['TEST_ENV_NUMBER'])
+        end
+
+        def runtime_log_name(num=nil)
+          # our first logfile shouldn't have a number in it, subsequent ones
+          # should (to mirror ENV['TEST_ENV_NUMBER'])
+          'log/parallel_runtime_test' +
+          (num.nil? || num.to_s == '' ? '' : ".#{num}") +
+          '.log'
         end
 
         def test_suffix
@@ -60,7 +68,7 @@ module ParallelTests
 
         def execute_command_and_capture_output(env, cmd, silence)
           # make processes descriptive / visible in ps -ef
-          windows = RbConfig::CONFIG['host_os'] =~ /cygwin|mswin|mingw|bccwin|wince|emx/ 
+          windows = RbConfig::CONFIG['host_os'] =~ /cygwin|mswin|mingw|bccwin|wince|emx/
           separator = windows ? ' & ' : ';'
           exports = env.map do |k,v|
             if windows
@@ -130,7 +138,21 @@ module ParallelTests
         end
 
         def with_runtime_info(tests)
-          lines = File.read(runtime_log).split("\n") rescue []
+          lines = []
+          # @proc_num is the process number that generated this logfile. for
+          # the first process number we don't append anything to the log file
+          # name since ENV['TEST_ENV_NUMBER'] isn't set. also this loading
+          # happens before any parallel processes are split off which means
+          # ENV['TEST_ENV_NUMBER'] won't be set here and runtime_log won't have
+          # any suffix.
+
+          @proc_num = 1
+          filename = runtime_log_name
+          while File.exists?(filename)
+            lines += File.read(filename).split("\n") rescue []
+            @proc_num += 1
+            filename = runtime_log_name(@proc_num)
+          end
 
           # use recorded test runtime if we got enough data
           if lines.size * 1.5 > tests.size

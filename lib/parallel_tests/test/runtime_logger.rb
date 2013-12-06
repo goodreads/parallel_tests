@@ -6,17 +6,30 @@ module ParallelTests
     class RuntimeLogger
       @@has_started = false
 
+      @@class_to_test_file_map = {}
+      output = `egrep -r -E "class .*? < .*?::.*?Test" test|grep -v "#" | sed s'/\:[ ]*/\:/g'|sed 's/class //g'|sed 's/ <.*//g'|sed 's/rb:/rb /g'|awk {'print $2,$1'}`
+      output.each_line do |line|
+        klass,file = line.chomp.split(/ /)
+        @@class_to_test_file_map[klass] = file
+      end
+
       class << self
         def log(test, start_time, end_time)
-          return if test.is_a? ::Test::Unit::TestSuite # don't log for suites-of-suites
-
           if !@@has_started # make empty log file
             File.open(logfile, 'w'){}
             @@has_started = true
           end
 
           locked_appending_to(logfile) do |file|
-            file.puts(message(test, start_time, end_time))
+            # we sometimes here back from these classes - this must be setup or
+            # teardown stuff (i think -e comes from the cli invocation of test
+            # runner). anyway, we don't want to log any of this to our results
+            # file
+            unless ['-e', 'ActionDispatch::IntegrationTest',
+                    'ActiveSupport::TestCase', 'ActionController::TestCase'
+                    ].include?(test.to_s)
+              file.puts(message(test, start_time, end_time))
+            end
           end
         end
 
@@ -24,7 +37,7 @@ module ParallelTests
 
         def message(test, start_time, end_time)
           delta = "%.2f" % (end_time.to_f-start_time.to_f)
-          filename = class_directory(test.class) + class_to_filename(test.class) + ".rb"
+          filename = @@class_to_test_file_map[test.to_s]
           "#{filename}:#{delta}"
         end
 
@@ -90,7 +103,7 @@ class ::Test::Unit::TestSuite
     start_time = ParallelTests.now
     run_without_timing(result, &progress_block)
     end_time = ParallelTests.now
-    ParallelTests::Test::RuntimeLogger.log(self.tests.first, start_time, end_time)
+    ParallelTests::Test::RuntimeLogger.log(self, start_time, end_time)
   end
 
   @@timing_installed = true
