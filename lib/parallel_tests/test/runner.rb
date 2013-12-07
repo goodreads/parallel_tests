@@ -19,7 +19,9 @@ module ParallelTests
         def runtime_log_name(num=nil)
           # our first logfile shouldn't have a number in it, subsequent ones
           # should (to mirror ENV['TEST_ENV_NUMBER'])
-          'log/parallel_runtime_test' +
+          #
+          # also, log to tmp/ so that these persist between testy runs
+          'tmp/parallel_runtime_test' +
           (num.nil? || num.to_s == '' ? '' : ".#{num}") +
           '.log'
         end
